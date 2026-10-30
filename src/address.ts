@@ -39,8 +39,9 @@ function transparentScript(input: string, kind: ZcashAddressKind): string | null
   return null;
 }
 
+/** No Zcash address contains whitespace, so a line break or space pasted inside one is dropped. */
 export function readAddress(raw: string): AddressFacts {
-  const info = classifyZcashAddress(raw);
+  const info = classifyZcashAddress(raw.replace(/\s+/g, ""));
   const facts: AddressFacts = {
     input: info.address,
     kind: info.kind,

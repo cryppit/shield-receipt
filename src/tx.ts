@@ -51,10 +51,12 @@ function actionPool(pool: "orchard" | "ironwood", b: unknown): PoolPart | null {
   return { pool, actions, valueBalanceZat, outputsEnabled };
 }
 
-export function readBlockchairTx(raw: unknown, dashboard: unknown, txid: string): TxFacts | { notFound: true } {
+/** `undecoded`: Blockchair has the transaction but no decoded form of it (for example a new format after an upgrade). */
+export function readBlockchairTx(raw: unknown, dashboard: unknown, txid: string): TxFacts | { notFound: true } | { undecoded: true } {
   const r = entry(raw, txid);
-  const t = r && isObj(r.decoded_raw_transaction) ? r.decoded_raw_transaction : null;
-  if (!t) return { notFound: true };
+  if (!r) return { notFound: true };
+  const t = isObj(r.decoded_raw_transaction) ? r.decoded_raw_transaction : null;
+  if (!t) return { undecoded: true };
   const d = entry(dashboard, txid);
   const info = d && isObj(d.transaction) ? d.transaction : {};
 

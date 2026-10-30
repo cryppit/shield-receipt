@@ -32,7 +32,8 @@ button.secondary { margin-top: 16px; background: transparent; color: var(--ink);
 .v-transparent { border-left-color: var(--amber); }
 .v-shielded { border-left-color: var(--lime); }
 .v-not-paid { border-left-color: var(--red); }
-.v-mempool { border-left-color: var(--blue); }
+.v-mempool, .v-unclear { border-left-color: var(--blue); }
+.v-transparent-only, .v-unsupported { border-left-color: var(--mute); }
 .evidence { list-style: none; margin: 16px 0 0; padding: 16px 0 0; border-top: 1px solid var(--line); display: grid; gap: 6px; }
 .evidence li { font-size: 14px; color: var(--mute); overflow-wrap: anywhere; }
 .evidence b { font: 600 12px var(--mono); letter-spacing: 0.04em; text-transform: uppercase; margin-right: 8px; color: var(--ink); }

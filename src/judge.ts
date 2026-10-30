@@ -1,40 +1,74 @@
 // Where a withdrawal landed, from the transaction and the address someone gave. The chain shows a transparent payment
 // to the address's script directly; for a shielded payment it shows only which pool value went into (and how much,
-// when it came from a transparent wallet), never who received it, so that is all a shielded verdict claims.
+// net, when it came from outside the pool), never who received it, so that is all a shielded verdict claims.
 import type { AddressFacts } from "./address.js";
-import type { Pool, TxFacts } from "./tx.js";
+import type { Pool, PoolPart, TxFacts } from "./tx.js";
+
+export interface LandingPart {
+  pool: Pool | "unknown";
+  /** Net value that entered the pool, when visible. */
+  amountZat: number | null;
+  /** Where a visible amount came from: another pool, or transparent inputs. Null when no amount is visible. */
+  from: Pool | "transparent" | null;
+}
 
 export type Verdict =
   | { kind: "transparent"; output: { n: number; valueZat: number }; couldShield: boolean }
-  | { kind: "shielded"; parts: { pool: Pool | "unknown"; amountZat: number | null }[] }
-  | { kind: "not-paid"; reason: "no-match" | "pool-mismatch" | "sprout" | "coinbase" }
+  | { kind: "shielded"; parts: LandingPart[] }
+  /** A pool spent value to other outputs; it may also have made shielded outputs, which the chain doesn't show. */
+  | { kind: "unclear"; pools: Pool[] }
+  /** Share-link view (no address) of a transaction that put no value into a shielded pool. */
+  | { kind: "transparent-only"; outputs: number }
+  | { kind: "not-paid"; reason: "no-match" | "pool-mismatch" | "transparent-address" }
+  | { kind: "unsupported"; reason: "sprout" | "coinbase" }
   | { kind: "mempool" };
 
-const canReceive = (addr: AddressFacts, pool: Pool): boolean => (pool === "sapling" ? addr.shielded.sapling : addr.shielded.orchard);
+const canReceive = (addr: AddressFacts | null, pool: Pool): boolean =>
+  addr === null || (pool === "sapling" ? addr.shielded.sapling : addr.shielded.orchard);
+const hasShieldedReceiver = (addr: AddressFacts): boolean => addr.shielded.sapling || addr.shielded.orchard;
+
+/**
+ * How one pool took part. Value entering (balance below zero) is a landing, from another pool whose balance is above
+ * zero if there is one, else from transparent inputs. A pool whose balance is above zero paid out: if nothing else
+ * received value (no transparent outputs, no other pool taking value in), it can only have paid within itself, so it
+ * is a shielded-to-shielded landing with the fee as its balance; otherwise the chain can't tell whether it also made
+ * shielded outputs.
+ */
+function role(p: PoolPart, tx: TxFacts): { landing: LandingPart } | { unclear: Pool } | null {
+  if (p.actions === 0 || !p.outputsEnabled) return null;
+  const others = tx.pools.filter((o) => o !== p);
+  if (p.valueBalanceZat < 0) {
+    const source = others.find((o) => o.valueBalanceZat > 0);
+    return { landing: { pool: p.pool, amountZat: -p.valueBalanceZat, from: source ? source.pool : "transparent" } };
+  }
+  const elsewhere = tx.outputs.length > 0 || others.some((o) => o.valueBalanceZat < 0);
+  return elsewhere ? { unclear: p.pool } : { landing: { pool: p.pool, amountZat: null, from: null } };
+}
 
 /** `addr` null is the share-link view: pool facts only. */
 export function judge(tx: TxFacts, addr: AddressFacts | null): Verdict {
   const script = addr?.transparentScript;
   const match = script ? tx.outputs.find((o) => o.scriptHex === script) : undefined;
-  if (match && addr) {
-    return { kind: "transparent", output: { n: match.n, valueZat: match.valueZat }, couldShield: addr.shielded.sapling || addr.shielded.orchard };
-  }
-  if (tx.sprout) return { kind: "not-paid", reason: "sprout" };
-  if (tx.coinbase) return { kind: "not-paid", reason: "coinbase" };
+  if (match && addr) return { kind: "transparent", output: { n: match.n, valueZat: match.valueZat }, couldShield: hasShieldedReceiver(addr) };
+  if (tx.sprout) return { kind: "unsupported", reason: "sprout" };
+  if (tx.coinbase) return { kind: "unsupported", reason: "coinbase" };
 
-  const paying = tx.pools.filter((p) => p.actions > 0 && p.outputsEnabled);
-  const parts: { pool: Pool | "unknown"; amountZat: number | null }[] = paying
-    .filter((p) => addr === null || canReceive(addr, p.pool))
-    .map((p) => ({ pool: p.pool, amountZat: p.valueBalanceZat < 0 ? -p.valueBalanceZat : null }));
-  // An unknown bundle may pay any shielded receiver, so it counts for any address that has one.
-  if (tx.unknownBundles.length > 0 && (addr === null || addr.shielded.sapling || addr.shielded.orchard)) {
-    parts.push({ pool: "unknown", amountZat: null });
+  const parts: LandingPart[] = [];
+  const unclear: Pool[] = [];
+  for (const p of tx.pools) {
+    if (!canReceive(addr, p.pool)) continue;
+    const r = role(p, tx);
+    if (r && "landing" in r) parts.push(r.landing);
+    if (r && "unclear" in r) unclear.push(r.unclear);
   }
+  // An unknown bundle may pay any shielded receiver, so it counts for any address that has one.
+  if (tx.unknownBundles.length > 0 && (addr === null || hasShieldedReceiver(addr))) parts.push({ pool: "unknown", amountZat: null, from: null });
   if (parts.length > 0) return { kind: "shielded", parts };
+  if (unclear.length > 0) return { kind: "unclear", pools: unclear };
 
   if (tx.height === null) return { kind: "mempool" };
-  // "pool-mismatch": the transaction did move shielded value, just not into a pool this address can receive.
-  const hasShielded = addr !== null && (addr.shielded.sapling || addr.shielded.orchard);
-  const movedShielded = tx.pools.some((p) => p.actions > 0);
-  return { kind: "not-paid", reason: hasShielded && movedShielded ? "pool-mismatch" : "no-match" };
+  if (addr === null) return { kind: "transparent-only", outputs: tx.outputs.length };
+  const movedShielded = tx.pools.some((p) => p.actions > 0) || tx.unknownBundles.length > 0;
+  if (!movedShielded) return { kind: "not-paid", reason: "no-match" };
+  return { kind: "not-paid", reason: hasShieldedReceiver(addr) ? "pool-mismatch" : "transparent-address" };
 }

@@ -6,7 +6,7 @@ import { edited, fixture, type Fixture } from "./fixtures.js";
 
 const read = (f: Fixture): TxFacts => {
   const r = readBlockchairTx(f.raw, f.dashboard, f.txid);
-  if ("notFound" in r) throw new Error("fixture not found");
+  if ("notFound" in r || "undecoded" in r) throw new Error("fixture not read");
   return r;
 };
 
@@ -40,6 +40,12 @@ describe("readBlockchairTx", () => {
   it("says when a transaction is not found", () => {
     const f = fixture("not-found");
     expect(readBlockchairTx(f.raw, f.dashboard, f.txid)).toEqual({ notFound: true });
+  });
+
+  it("says when Blockchair has the transaction but can't decode it (for example a new format after an upgrade)", () => {
+    const f = fixture("ironwood-from-transparent");
+    const raw = { data: { [f.txid]: { raw_transaction: "0600…" } }, context: { code: 200 } };
+    expect(readBlockchairTx(raw, f.dashboard, f.txid)).toEqual({ undecoded: true });
   });
 
   it("gives a mempool transaction no height (synthetic: block_id -1)", () => {

@@ -11,7 +11,7 @@ export function extractTxid(raw: string): string | null {
   return ids.length === 1 && runs.every((r) => r.length <= 64) ? ids[0]!.toLowerCase() : null;
 }
 
-export type FetchResult = TxFacts | { notFound: true } | { busy: true } | { error: string };
+export type FetchResult = TxFacts | { notFound: true } | { undecoded: true } | { busy: true } | { error: string };
 
 class Busy extends Error {}
 
@@ -23,11 +23,16 @@ async function getJson(url: string, fetchImpl: typeof fetch): Promise<unknown> {
     throw new Busy();
   }
   if (!res.ok) throw new Busy();
+  let body: unknown;
   try {
-    return await res.json();
+    body = await res.json();
   } catch {
     throw new Error("Blockchair sent a response this page can't read");
   }
+  // Blockchair can report a limit or an error inside an HTTP 200 response.
+  const code = typeof body === "object" && body !== null && "context" in body ? (body as { context?: { code?: unknown } }).context?.code : 200;
+  if (code !== 200) throw new Busy();
+  return body;
 }
 
 export async function fetchTx(txid: string, fetchImpl: typeof fetch = fetch): Promise<FetchResult> {

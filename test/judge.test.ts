@@ -8,7 +8,7 @@ import { edited, fixture, type Fixture } from "./fixtures.js";
 
 const read = (f: Fixture): TxFacts => {
   const r = readBlockchairTx(f.raw, f.dashboard, f.txid);
-  if ("notFound" in r) throw new Error("fixture not found");
+  if ("notFound" in r || "undecoded" in r) throw new Error("fixture not read");
   return r;
 };
 const tx = (name: string): TxFacts => read(fixture(name));
@@ -42,23 +42,23 @@ describe("judge: transparent", () => {
 describe("judge: shielded", () => {
   it("names the Ironwood pool and the amount that came from a transparent wallet", () => {
     expect(judge(tx("ironwood-from-transparent"), ua("76a914000000000000000000000000000000000000000088ac", ORCHARD_ONLY))).toEqual({
-      kind: "shielded", parts: [{ pool: "ironwood", amountZat: 16826521 }],
+      kind: "shielded", parts: [{ pool: "ironwood", amountZat: 16826521, from: "transparent" }],
     });
   });
 
   it("gives no amount for a shielded-to-shielded payment", () => {
-    expect(judge(tx("ironwood-shielded-only"), ua(null, ORCHARD_ONLY))).toEqual({ kind: "shielded", parts: [{ pool: "ironwood", amountZat: null }] });
-    expect(judge(tx("orchard-shielded-only"), ua(null, ORCHARD_ONLY))).toEqual({ kind: "shielded", parts: [{ pool: "orchard", amountZat: null }] });
+    expect(judge(tx("ironwood-shielded-only"), ua(null, ORCHARD_ONLY))).toEqual({ kind: "shielded", parts: [{ pool: "ironwood", amountZat: null, from: null }] });
+    expect(judge(tx("orchard-shielded-only"), ua(null, ORCHARD_ONLY))).toEqual({ kind: "shielded", parts: [{ pool: "orchard", amountZat: null, from: null }] });
   });
 
   it("names the Sapling pool for a Sapling address", () => {
-    expect(judge(tx("sapling-payout"), SAPLING_ZS1)).toEqual({ kind: "shielded", parts: [{ pool: "sapling", amountZat: 125045000 }] });
+    expect(judge(tx("sapling-payout"), SAPLING_ZS1)).toEqual({ kind: "shielded", parts: [{ pool: "sapling", amountZat: 125045000, from: "transparent" }] });
   });
 
   it("lists a shielded bundle it does not know as an unknown pool", () => {
     const t = read(edited("ironwood-from-transparent", (raw) => { raw.zfuture = { actions: [{}], valueBalanceZat: -5 }; }));
     expect(judge(t, ua(null, ORCHARD_ONLY))).toEqual({
-      kind: "shielded", parts: [{ pool: "ironwood", amountZat: 16826521 }, { pool: "unknown", amountZat: null }],
+      kind: "shielded", parts: [{ pool: "ironwood", amountZat: 16826521, from: "transparent" }, { pool: "unknown", amountZat: null, from: null }],
     });
   });
 
@@ -68,7 +68,30 @@ describe("judge: shielded", () => {
   });
 
   it("shows pool facts alone when no address is given (a share link)", () => {
-    expect(judge(tx("ironwood-from-transparent"), null)).toEqual({ kind: "shielded", parts: [{ pool: "ironwood", amountZat: 16826521 }] });
+    expect(judge(tx("ironwood-from-transparent"), null)).toEqual({ kind: "shielded", parts: [{ pool: "ironwood", amountZat: 16826521, from: "transparent" }] });
+  });
+
+  it("never gives the share view (no address) a 'not paid' verdict, on any fixture", () => {
+    for (const name of ["ironwood-from-transparent", "ironwood-shielded-only", "orchard-shielded-only", "sapling-payout", "p2sh-batch", "transparent-batch"]) {
+      expect(judge(tx(name), null).kind, name).not.toBe("not-paid");
+    }
+  });
+
+  it("says a share link of a transparent-only payout paid transparent outputs, never 'not paid'", () => {
+    expect(judge(tx("transparent-batch"), null)).toEqual({ kind: "transparent-only", outputs: 4 });
+  });
+
+  it("says value moved between pools came from the other pool, not a transparent address", () => {
+    const t = read(edited("ironwood-from-transparent", (raw) => { raw.orchard = { actions: [{}, {}], valueBalanceZat: 16836521 }; }));
+    expect(judge(t, ua(null, ORCHARD_ONLY))).toEqual({ kind: "shielded", parts: [{ pool: "ironwood", amountZat: 16826521, from: "orchard" }] });
+  });
+
+  it("can't tell when a pool spent to other outputs and may also have made shielded outputs", () => {
+    const t = read(edited("orchard-shielded-only", (raw) => {
+      raw.vout = [{ valueZat: 500000000, n: 0, scriptPubKey: { hex: "76a914111111111111111111111111111111111111111188ac", type: "pubkeyhash" } }];
+      (raw.orchard as { valueBalanceZat: number }).valueBalanceZat = 500080000;
+    }));
+    expect(judge(t, ua(null, ORCHARD_ONLY))).toEqual({ kind: "unclear", pools: ["orchard"] });
   });
 });
 
@@ -77,8 +100,8 @@ describe("judge: not paid", () => {
     expect(judge(tx("ironwood-from-transparent"), SAPLING_ZS1)).toEqual({ kind: "not-paid", reason: "pool-mismatch" });
   });
 
-  it("says a t1 address with no matching output was not paid", () => {
-    expect(judge(tx("ironwood-shielded-only"), readAddress("t1VmmGiyjVNeCjxDZzg7vZmd99WyzVby9yC"))).toEqual({ kind: "not-paid", reason: "no-match" });
+  it("says a t1 address can't receive the shielded value a transaction moved", () => {
+    expect(judge(tx("ironwood-shielded-only"), readAddress("t1VmmGiyjVNeCjxDZzg7vZmd99WyzVby9yC"))).toEqual({ kind: "not-paid", reason: "transparent-address" });
   });
 
   it("says a unified address was not paid by a transparent-only transaction with no output to it", () => {
@@ -95,9 +118,11 @@ describe("judge: not paid", () => {
     expect(judge(t, readAddress(t.outputs[1]!.address!))).toMatchObject({ kind: "transparent", output: { n: 1 } });
   });
 
-  it("reports Sprout and coinbase transactions", () => {
+  it("says it doesn't read Sprout, and that a coinbase is a mining reward, with or without an address", () => {
     const addr = readAddress("t1VmmGiyjVNeCjxDZzg7vZmd99WyzVby9yC");
-    expect(judge(read(edited("transparent-batch", (raw) => { raw.vjoinsplit = [{}]; })), addr)).toEqual({ kind: "not-paid", reason: "sprout" });
-    expect(judge(read(edited("transparent-batch", (_raw, dash) => { dash.is_coinbase = true; })), addr)).toEqual({ kind: "not-paid", reason: "coinbase" });
+    for (const a of [addr, null]) {
+      expect(judge(read(edited("transparent-batch", (raw) => { raw.vjoinsplit = [{}]; })), a)).toEqual({ kind: "unsupported", reason: "sprout" });
+      expect(judge(read(edited("transparent-batch", (_raw, dash) => { dash.is_coinbase = true; })), a)).toEqual({ kind: "unsupported", reason: "coinbase" });
+    }
   });
 });

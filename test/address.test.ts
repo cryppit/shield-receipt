@@ -60,6 +60,12 @@ describe("readAddress", () => {
     expect(readAddress(`  ${T1}\n`)).toMatchObject({ input: T1, valid: true, transparentScript: T1_SCRIPT });
   });
 
+  it("ignores spaces and line breaks inside a pasted address", () => {
+    const a = transparentAndOrchard.address;
+    expect(readAddress(`${a.slice(0, 60)}
+${a.slice(60, 120)} ${a.slice(120)}`)).toMatchObject({ input: a, valid: true, transparentScript: `76a914${transparentAndOrchard.p2pkh}88ac` });
+  });
+
   it("marks something that is not an address as invalid, with no script and no receivers", () => {
     const a = readAddress("hello");
     expect(a.valid).toBe(false);

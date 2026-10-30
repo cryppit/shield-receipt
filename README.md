@@ -8,8 +8,11 @@ the transaction from the public chain and tells you one of three things:
 - **Landed shielded, in the Ironwood pool** (or Sapling, or Orchard). No transparent output paid the address and the
   transaction put value into a pool the address can receive. When the ZEC came from a transparent wallet, the amount
   is shown too.
-- **Not paid to this address**, with the reason: no matching output, a pool the address can't receive, a transaction
-  still in the mempool, or an ID that doesn't exist.
+- **Not paid to this address**, with the reason: no matching output, a pool the address can't receive, or a
+  transparent address against a shielded payment.
+
+It also says when the chain can't tell (a pool spent to other outputs and may have made shielded outputs too), when a
+transaction isn't confirmed yet, and when Blockchair has no such transaction.
 
 Every answer shows its evidence: block, matched output or pool value balance, and a link to the transaction on
 Blockchair.

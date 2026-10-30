@@ -84,6 +84,7 @@ async function check(txid: string, addr: AddressFacts | null, exchange: string):
     const r = await fetchTx(txid);
     if ("busy" in r) return showMessage("The explorer is busy. Try again in a minute.");
     if ("notFound" in r) return showMessage("Blockchair has no transaction with this ID. Check it, or wait a minute if the withdrawal was just sent.");
+    if ("undecoded" in r) return showMessage("Blockchair has this transaction but can't decode it yet, so this page can't read it. Try again later.");
     if ("error" in r) return showMessage(r.error);
     render(r, addr, exchange);
   } finally {

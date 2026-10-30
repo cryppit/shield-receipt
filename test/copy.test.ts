@@ -5,13 +5,14 @@ import { describe as words, formatZec } from "../src/copy.js";
 import type { Verdict } from "../src/judge.js";
 
 const transparent = (couldShield: boolean): Verdict => ({ kind: "transparent", output: { n: 3, valueZat: 125045000 }, couldShield });
-const ironwood = (amountZat: number | null): Verdict => ({ kind: "shielded", parts: [{ pool: "ironwood", amountZat }] });
+const ironwood = (amountZat: number | null, from: "transparent" | "orchard" | null = amountZat === null ? null : "transparent"): Verdict => ({ kind: "shielded", parts: [{ pool: "ironwood", amountZat, from }] });
 const all: Verdict[] = [
   transparent(true), transparent(false), ironwood(16826521), ironwood(null),
-  { kind: "shielded", parts: [{ pool: "sapling", amountZat: 1 }, { pool: "ironwood", amountZat: null }] },
-  { kind: "shielded", parts: [{ pool: "unknown", amountZat: null }] },
-  { kind: "not-paid", reason: "no-match" }, { kind: "not-paid", reason: "pool-mismatch" },
-  { kind: "not-paid", reason: "sprout" }, { kind: "not-paid", reason: "coinbase" }, { kind: "mempool" },
+  { kind: "shielded", parts: [{ pool: "sapling", amountZat: 1, from: "transparent" }, { pool: "ironwood", amountZat: null, from: null }] },
+  { kind: "shielded", parts: [{ pool: "unknown", amountZat: null, from: null }] },
+  ironwood(16826521, "orchard"), { kind: "unclear", pools: ["orchard"] }, { kind: "transparent-only", outputs: 4 },
+  { kind: "not-paid", reason: "no-match" }, { kind: "not-paid", reason: "pool-mismatch" }, { kind: "not-paid", reason: "transparent-address" },
+  { kind: "unsupported", reason: "sprout" }, { kind: "unsupported", reason: "coinbase" }, { kind: "mempool" },
 ];
 
 describe("formatZec", () => {
@@ -36,7 +37,7 @@ describe("describe", () => {
   it("titles an Ironwood landing and says why the amount is visible", () => {
     const w = words(ironwood(16826521), { addressGiven: true });
     expect(w.title).toBe("Landed shielded, in the Ironwood pool");
-    expect(w.lines).toContain("0.16826521 ZEC went into the Ironwood pool in this transaction. The amount is visible because it came from a transparent address.");
+    expect(w.lines).toContain("0.16826521 ZEC net went into the Ironwood pool in this transaction. The amount is visible because it came from a transparent address.");
   });
 
   it("says when the amount isn't visible", () => {
@@ -46,6 +47,28 @@ describe("describe", () => {
   it("names every pool of a payment into two pools, and an unknown one plainly", () => {
     expect(words(all[4]!, { addressGiven: true }).title).toBe("Landed shielded, in the Sapling and Ironwood pools");
     expect(words(all[5]!, { addressGiven: true }).title).toBe("Landed shielded, in a pool this page doesn't know yet");
+  });
+
+  it("says value that moved between pools came from the other pool", () => {
+    const text = words(ironwood(16826521, "orchard"), { addressGiven: true }).lines.join(" ");
+    expect(text).toContain("0.16826521 ZEC net moved into the Ironwood pool from the Orchard pool in this transaction.");
+    expect(text).not.toContain("transparent address");
+  });
+
+  it("says when the chain can't tell, and why", () => {
+    const w = words({ kind: "unclear", pools: ["orchard"] }, { addressGiven: true });
+    expect(w.title).toBe("The chain can't tell");
+    expect(w.lines.join(" ")).toContain("may also have made shielded outputs");
+  });
+
+  it("words every verdict the share view can get without 'not paid to this address'", () => {
+    for (const v of all.filter((x) => x.kind !== "not-paid")) expect(words(v, { addressGiven: false }).title).not.toBe("Not paid to this address");
+  });
+
+  it("words a t1 address against a shielded transaction truthfully", () => {
+    const text = words({ kind: "not-paid", reason: "transparent-address" }, { addressGiven: true }).lines.join(" ");
+    expect(text).toContain("a transparent address can't receive shielded ZEC");
+    expect(text).not.toContain("moved no shielded value");
   });
 
   it("never says more than the chain shows", () => {

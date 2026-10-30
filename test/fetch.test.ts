@@ -51,6 +51,10 @@ describe("fetchTx", () => {
     expect(await fetchTx(TXID, stub(() => json({}, status)).fetch)).toEqual({ busy: true });
   });
 
+  it("calls an error inside a 200 response busy", async () => {
+    expect(await fetchTx(TXID, stub(() => json({ data: null, context: { code: 430, error: "limit" } })).fetch)).toEqual({ busy: true });
+  });
+
   it("calls a network failure busy", async () => {
     expect(await fetchTx(TXID, stub(() => { throw new TypeError("Failed to fetch"); }).fetch)).toEqual({ busy: true });
   });

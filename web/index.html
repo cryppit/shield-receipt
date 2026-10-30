@@ -25,13 +25,15 @@
 
   <form id="check" class="panel" autocomplete="off">
     <label for="txid">Transaction ID (txid)</label>
-    <input id="txid" name="txid" inputmode="text" spellcheck="false" placeholder="64 characters, or a block explorer link" required>
+    <input id="txid" inputmode="text" spellcheck="false" placeholder="64 characters, or a block explorer link" required>
     <label for="address">The address you gave <span class="muted">(stays on this page)</span></label>
-    <textarea id="address" name="address" rows="2" spellcheck="false" placeholder="u1…, zs1…, t1… or tex1…"></textarea>
+    <textarea id="address" rows="2" spellcheck="false" placeholder="u1…, zs1…, t1… or tex1…"></textarea>
     <label for="exchange">Exchange or wallet <span class="muted">(optional, only to word the answer)</span></label>
-    <input id="exchange" name="exchange" spellcheck="false" placeholder="e.g. Kraken">
+    <input id="exchange" spellcheck="false" placeholder="e.g. Kraken">
     <button id="go" type="submit">Check</button>
   </form>
+
+  <noscript><p class="error">This page needs JavaScript. Without it nothing is checked or sent.</p></noscript>
 
   <section id="result" aria-live="polite" hidden></section>
 
