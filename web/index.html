@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shield Receipt</title>
+<meta name="description" content="Paste a ZEC withdrawal's txid and the address you gave: see whether it was paid to the transparent part or landed shielded, and in which pool. Keyless, read-only, by Cryppit.">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Shield Receipt: did your ZEC withdrawal land shielded?">
+<meta property="og:description" content="Paste the txid and the address you gave. Keyless and read-only, by Cryppit.">
+<meta name="theme-color" content="#04061a">
+<link rel="stylesheet" href="style.css">
+<script type="module" src="main.js"></script>
+</head>
+<body>
+<main>
+  <p class="kicker">Zcash · withdrawals · keyless</p>
+  <h1>Did your ZEC withdrawal land shielded?</h1>
+  <p class="lead">Many exchanges take a shielded address and then pay its transparent part. Paste the transaction ID of a
+    withdrawal you received and the address you gave: this page reads the transaction from the public chain and shows
+    where it landed.</p>
+
+  <form id="check" class="panel" autocomplete="off">
+    <label for="txid">Transaction ID (txid)</label>
+    <input id="txid" name="txid" inputmode="text" spellcheck="false" placeholder="64 characters, or a block explorer link" required>
+    <label for="address">The address you gave <span class="muted">(stays on this page)</span></label>
+    <textarea id="address" name="address" rows="2" spellcheck="false" placeholder="u1…, zs1…, t1… or tex1…"></textarea>
+    <label for="exchange">Exchange or wallet <span class="muted">(optional, only to word the answer)</span></label>
+    <input id="exchange" name="exchange" spellcheck="false" placeholder="e.g. Kraken">
+    <button id="go" type="submit">Check</button>
+  </form>
+
+  <section id="result" aria-live="polite" hidden></section>
+
+  <h2>How this works</h2>
+  <ol class="facts">
+    <li>Your browser splits the address into its parts: a transparent receiver (t1, t3, TEX or a unified address's
+      transparent part) and any shielded receivers (Sapling, Orchard; Ironwood pays the Orchard receiver).</li>
+    <li>It asks Blockchair for the transaction, sending only the txid.</li>
+    <li>If an output pays your transparent receiver, the exchange paid the transparent part. The amount and address
+      are public.</li>
+    <li>Otherwise it reads which shielded pool the transaction put value into, and how much when the ZEC came from a
+      transparent wallet. The chain doesn't show who received a shielded payment, so the page doesn't claim it: your
+      wallet will show whether it was yours.</li>
+  </ol>
+  <p class="muted">No keys of any kind, no viewing keys, no account, nothing stored.</p>
+
+  <h2>What others can see</h2>
+  <ul class="facts">
+    <li>Blockchair sees the txid you check and your IP address. Use Tor or a VPN if you'd rather it didn't.</li>
+    <li>The address you type never leaves this page: it is not sent, stored or put in a link.</li>
+    <li>A share link carries only the txid. Whoever opens it sees the transaction's pool facts, not your address.</li>
+  </ul>
+
+  <footer>
+    <p>By <a href="https://github.com/cryppit">Cryppit</a>. Open source under MIT:
+      <a href="https://github.com/cryppit/shield-receipt">github.com/cryppit/shield-receipt</a>.
+      Ready for NU7? See the <a href="https://cryppit.github.io/nu7-readiness/">NU7 readiness board</a>.</p>
+  </footer>
+</main>
+</body>
+</html>
