@@ -52,4 +52,6 @@ pnpm build       # static page in dist/
 
 New fixture: `node scripts/record-fixture.mjs <name> <txid>` (keeps only the fields the reader uses).
 
-MIT licence. By [Cryppit](https://github.com/cryppit).
+MIT licence. By [Cryppit](https://github.com/cryppit). The ZEC coin logo in `web/logos/` is from
+[web3icons](https://github.com/0xa3k5/web3icons) (MIT, licence alongside it). Not affiliated with the Zcash
+organisations, Blockchair or any exchange or wallet.

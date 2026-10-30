@@ -3,11 +3,11 @@
 import { readAddress, type AddressFacts } from "../src/address.js";
 import { describe, formatZec } from "../src/copy.js";
 import { extractTxid, fetchTx } from "../src/fetch.js";
-import { judge } from "../src/judge.js";
+import { judge, type Verdict } from "../src/judge.js";
 import type { TxFacts } from "../src/tx.js";
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
-const form = $<HTMLFormElement>("check");
+const form = $<HTMLFormElement>("check-form");
 const txidInput = $<HTMLInputElement>("txid");
 const addressInput = $<HTMLTextAreaElement>("address");
 const exchangeInput = $<HTMLInputElement>("exchange");
@@ -28,11 +28,37 @@ function showMessage(text: string, cls = "error"): void {
   result.hidden = false;
 }
 
-function evidenceRow(label: string, value: string | Node): HTMLLIElement {
+function evidenceRow(label: string, value: string | Node, marker?: Node): HTMLLIElement {
   const li = el("li");
+  if (marker) li.append(marker);
   li.append(el("b", label), typeof value === "string" ? document.createTextNode(value) : value);
   return li;
 }
+
+const dot = (kind: "shielded" | "transparent"): HTMLSpanElement => el("span", undefined, `dot dot-${kind}`);
+
+function zecLogo(): HTMLImageElement {
+  const img = el("img");
+  img.src = "logos/zec.svg";
+  img.alt = "";
+  return img;
+}
+
+// The glowing "reading" card the other Cryppit sites show while public data loads.
+function showLoading(): void {
+  const text = el("div", undefined, "ld-text");
+  text.append(el("b", "Reading the transaction…"), el("span", "Only the txid goes to Blockchair. Your address stays in this tab."));
+  const box = el("div", undefined, "loading");
+  box.setAttribute("role", "status");
+  box.append(el("span", undefined, "ld-orb"), text, el("span", undefined, "ld-bar"));
+  result.replaceChildren(box);
+  result.hidden = false;
+}
+
+const ICON: Record<Verdict["kind"], string> = {
+  shielded: "shielded", transparent: "transparent", "not-paid": "not-paid", mempool: "wait",
+  unclear: "info", "transparent-only": "info", unsupported: "info",
+};
 
 const utc = (iso: string): string =>
   `${new Date(iso).toLocaleString("en-GB", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })} UTC`;
@@ -48,22 +74,24 @@ function render(tx: TxFacts, addr: AddressFacts | null, exchange: string): void 
   const verdict = judge(tx, addr);
   const words = describe(verdict, { addressGiven: addr !== null, exchange });
   const card = el("article", undefined, `card v-${verdict.kind}`);
-  card.append(el("h2", words.title));
+  const head = el("div", undefined, "card-head");
+  head.append(el("span", undefined, `vi vi-${ICON[verdict.kind]}`), el("h2", words.title));
+  card.append(head);
   for (const line of words.lines) card.append(el("p", line));
 
   const ev = el("ul", undefined, "evidence");
-  ev.append(evidenceRow("Transaction", link(`https://blockchair.com/zcash/transaction/${tx.txid}`, `${tx.txid.slice(0, 10)}…${tx.txid.slice(-6)} on Blockchair`)));
+  ev.append(evidenceRow("Transaction", link(`https://blockchair.com/zcash/transaction/${tx.txid}`, `${tx.txid.slice(0, 10)}…${tx.txid.slice(-6)} on Blockchair`), zecLogo()));
   ev.append(evidenceRow("Block", tx.height === null ? "not confirmed yet" : `${tx.height.toLocaleString("en-US")}, ${tx.time ? utc(tx.time) : "time unknown"}`));
   if (verdict.kind === "transparent") {
     const out = tx.outputs.find((o) => o.n === verdict.output.n);
-    ev.append(evidenceRow("Matched output", `#${verdict.output.n}, ${formatZec(verdict.output.valueZat)} ZEC${out?.address ? ` to ${out.address}` : ""}`));
+    ev.append(evidenceRow("Matched output", `#${verdict.output.n}, ${formatZec(verdict.output.valueZat)} ZEC${out?.address ? ` to ${out.address}` : ""}`, dot("transparent")));
   }
   for (const p of tx.pools) {
     const flow = p.valueBalanceZat < 0 ? `${formatZec(-p.valueBalanceZat)} ZEC in` : p.valueBalanceZat > 0 ? `${formatZec(p.valueBalanceZat)} ZEC out` : "no net value in or out";
-    ev.append(evidenceRow(`${POOL[p.pool]} pool`, `${flow}, ${p.actions} ${p.pool === "sapling" ? (p.actions === 1 ? "spend or output" : "spends and outputs") : p.actions === 1 ? "action" : "actions"}${p.outputsEnabled ? "" : ", outputs disabled"}`));
+    ev.append(evidenceRow(`${POOL[p.pool]} pool`, `${flow}, ${p.actions} ${p.pool === "sapling" ? (p.actions === 1 ? "spend or output" : "spends and outputs") : p.actions === 1 ? "action" : "actions"}${p.outputsEnabled ? "" : ", outputs disabled"}`, dot("shielded")));
   }
   for (const k of tx.unknownBundles) ev.append(evidenceRow("Unknown bundle", k));
-  ev.append(evidenceRow("Transparent outputs", String(tx.outputs.length)));
+  ev.append(evidenceRow("Transparent outputs", String(tx.outputs.length), dot("transparent")));
   card.append(ev);
 
   const share = el("button", "Copy a share link (txid only)", "secondary");
@@ -79,7 +107,7 @@ function render(tx: TxFacts, addr: AddressFacts | null, exchange: string): void 
 
 async function check(txid: string, addr: AddressFacts | null, exchange: string): Promise<void> {
   button.disabled = true;
-  showMessage("Reading the transaction…", "muted");
+  showLoading();
   try {
     const r = await fetchTx(txid);
     if ("busy" in r) return showMessage("The explorer is busy. Try again in a minute.");
